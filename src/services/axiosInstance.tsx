@@ -1,66 +1,50 @@
-import axios, { AxiosError, AxiosResponse } from 'axios'
-import Cookies from 'js-cookie'
+import axios from 'axios'
+import keycloak from './keycloak.ts'
 
-const BASE_URL = 'http://localhost:8080'
+const BASE_URL = 'http://localhost:8088'
+keycloak.init({
+    onLoad: 'login-required', // Supported values: 'check-sso' , 'login-required'
+    checkLoginIframe: true,
+    pkceMethod: 'S256',
+}).then((auth) => {
+    if (!auth) {
+        window.location.reload()
+    } else {
+        /* Remove below logs if you are using this on production */
+        console.info('Authenticated')
+        console.log('auth', auth)
+        console.log('Keycloak', keycloak)
+        console.log('Access Token', keycloak.token)
 
-const onFulfilled = (res: AxiosResponse<any, any>) => {
-    if (!(res.status === 200 || res.status === 201 || res.status === 204)) throw new Error()
-    if (res.data.errors) throw new Error(res.data.errors)
-    return res
-}
+        /* http client will use this header in every request it sends */
+        axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${keycloak.token}`
+        sessionStorage.setItem('auth', keycloak.token as string)
 
-const onRejected = async (err: AxiosError<any>) => {
-    // no token found
-    if (err.response?.status === 401) {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        if (err.response?.data?.error === '911') {
-            const userId = window.sessionStorage.getItem('userId') as string
-            const payload = await axios.post(`/cvm/auth/tk/ref?userId=${userId}`, {}, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    AuthorizationRT: Cookies.get('refreshToken'),
-                },
-            })
-            Cookies.set('authToken', payload.headers.authorization, { expires: 1 })
-            Cookies.set('refreshToken', payload.headers.authorizationrt, { expires: 1 })
-            if (err.config?.headers) {
-                err.config.headers.setAuthorization(payload.headers.authorization)
-                // Retry the original request that got 911'd
-                return await axios.request(err.config)
-            }
-        } else {
-            sessionStorage.clear()
-            Object.keys(Cookies.get()).forEach((cookieName) => {
-                Cookies.remove(cookieName);
-            })
-            window.location.href = '/login'
+        keycloak.onTokenExpired = () => {
+            console.log('token expired')
         }
     }
-    return Promise.reject(err)
-}
-
+}, () => {
+    /* Notify the user if necessary */
+    console.error('Authentication Failed')
+})
 /********** for Content-Type 'application/json' **********/
 const axiosInstance = axios.create({
     baseURL: BASE_URL,
     timeout: 20000,
     data: {},
     headers: {
-        // 'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Origin': '*',
         'Content-Type': 'application/json',
     },
 })
 axiosInstance.interceptors.request.use(
     (config) => {
-        const token = Cookies.get('authToken')
-        if (token) {
-            config.headers.Authorization = token
-        }
+        config.headers.Authorization = `Bearer ${sessionStorage.getItem('auth')}`
         return config
     }, (error) => {
         return Promise.reject(error)
-    }
+    },
 )
-// axiosInstance.interceptors.response.use(onFulfilled, onRejected)
 
 export default axiosInstance
