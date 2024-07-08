@@ -17,7 +17,7 @@ keycloak.init({
         console.log('Access Token', keycloak.token)
 
         /* http client will use this header in every request it sends */
-        axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${keycloak.token}`
+        // axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${keycloak.token}`
         sessionStorage.setItem('auth', keycloak.token as string)
 
         keycloak.onTokenExpired = () => {
